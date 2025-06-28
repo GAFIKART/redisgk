@@ -221,7 +221,7 @@ func demoExists(redisGk *redisgklib.RedisGk) {
 	fmt.Println("🔍 Проверка существования ключей...")
 
 	// Проверка существующего ключа
-	exists, err := redisGk.Exists("users:1")
+	exists, err := redisGk.Exists([]string{"users", "1"})
 	if err != nil {
 		log.Printf("Ошибка проверки существования ключа: %v", err)
 		return
@@ -229,7 +229,7 @@ func demoExists(redisGk *redisgklib.RedisGk) {
 	fmt.Printf("✅ Ключ 'users:1' существует: %t\n", exists)
 
 	// Проверка несуществующего ключа
-	exists, err = redisGk.Exists("nonexistent:key")
+	exists, err = redisGk.Exists([]string{"nonexistent", "key"})
 	if err != nil {
 		log.Printf("Ошибка проверки существования ключа: %v", err)
 		return
@@ -250,7 +250,7 @@ func demoDelete(redisGk *redisgklib.RedisGk) {
 	fmt.Println("✅ Тестовый ключ создан: test:delete:key")
 
 	// Проверка существования перед удалением
-	exists, err := redisGk.Exists("test:delete:key")
+	exists, err := redisGk.Exists([]string{"test", "delete", "key"})
 	if err != nil {
 		log.Printf("Ошибка проверки существования: %v", err)
 		return
@@ -266,7 +266,7 @@ func demoDelete(redisGk *redisgklib.RedisGk) {
 	fmt.Println("✅ Ключ удален: test:delete:key")
 
 	// Проверка существования после удаления
-	exists, err = redisGk.Exists("test:delete:key")
+	exists, err = redisGk.Exists([]string{"test", "delete", "key"})
 	if err != nil {
 		log.Printf("Ошибка проверки существования: %v", err)
 		return

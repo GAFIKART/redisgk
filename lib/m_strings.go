@@ -118,7 +118,7 @@ func (v *RedisGk) Del(keyPath ...[]string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
 	defer cancel()
 
-	
+
 	keysPDel := make([]string, 0)
 	for _, key := range keyPath {
 		keyM, err := slicePathsConvertor(key)
@@ -199,13 +199,16 @@ func FindObj[T any](
 	return results, nil
 }
 
-func (v *RedisGk) Exists(key string) (bool, error) {
+func (v *RedisGk) Exists(key []string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
 	defer cancel()
 
-	key = pathRedisController(key)
+	keyP, err := slicePathsConvertor(key)
+	if err != nil {
+		return false, err
+	}
 
-	result, err := v.redisClient.Exists(ctx, key).Result()
+	result, err := v.redisClient.Exists(ctx, keyP).Result()
 	if err != nil {
 		return false, err
 	}
