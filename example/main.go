@@ -79,6 +79,10 @@ func main() {
 	fmt.Println("\n=== 5. УДАЛЕНИЕ КЛЮЧЕЙ ===")
 	demoDelete(redisGk)
 
+	// Пример 6: Получение списка ключей
+	fmt.Println("\n=== 6. ПОЛУЧЕНИЕ СПИСКА КЛЮЧЕЙ ===")
+	demoGetKeys(redisGk)
+
 	fmt.Println("\n=== ВСЕ ПРИМЕРЫ ЗАВЕРШЕНЫ ===")
 }
 
@@ -290,5 +294,34 @@ func demoDelete(redisGk *redisgklib.RedisGk) {
 		log.Printf("Ошибка удаления ключей: %v", err)
 	} else {
 		fmt.Println("✅ Все ключи удалены успешно")
+	}
+}
+
+// demoGetKeys - демонстрация получения списка ключей
+func demoGetKeys(redisGk *redisgklib.RedisGk) {
+	fmt.Println("🔍 Получение списка ключей...")
+
+	// Получение списка всех ключей
+	keys, err := redisGk.GetKeys([]string{})
+	if err != nil {
+		log.Printf("Ошибка получения списка ключей: %v", err)
+		return
+	}
+
+	fmt.Printf("✅ Найдено ключей: %d\n", len(keys))
+	for _, key := range keys {
+		fmt.Println("   -", key)
+	}
+
+	// Получение ключей по паттерну
+	userKeys, err := redisGk.GetKeys([]string{"users"})
+	if err != nil {
+		log.Printf("Ошибка получения ключей пользователей: %v", err)
+		return
+	}
+
+	fmt.Printf("✅ Найдено ключей пользователей: %d\n", len(userKeys))
+	for _, key := range userKeys {
+		fmt.Println("   -", key)
 	}
 }
