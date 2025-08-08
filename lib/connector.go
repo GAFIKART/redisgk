@@ -1,47 +1,72 @@
 package redisgklib
 
 import (
+	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	redisOnce   sync.Once
-	redisClient *redis.Client
-)
-
+// newRedisClientConnector creates a new Redis client
 func newRedisClientConnector(conf RedisConfConn) (*redis.Client, error) {
-	var err error
-	redisOnce.Do(func() {
-		redisHost := conf.Host
-		redisPort := conf.Port
-		redisUser := conf.User
-		redisPassword := conf.Password
+	// Check for empty configuration
+	if (RedisConfConn{}) == conf {
+		return nil, fmt.Errorf("configuration is empty")
+	}
 
-		redisNDb := max(conf.DB, 0)
+	redisHost := conf.Host
+	redisPort := conf.Port
+	redisUser := conf.User
+	redisPassword := conf.Password
 
-		if err = validateRedisConfConn(conf); err != nil {
-			return
-		}
+	redisNDb := max(conf.DB, 0)
 
-		opts := &redis.Options{
-			Addr:     fmt.Sprintf("%s:%d", redisHost, redisPort),
-			Username: redisUser,
-			Password: redisPassword,
-			DB:       redisNDb,
-		}
+	if err := validateRedisConfConn(conf); err != nil {
+		return nil, err
+	}
 
-		opts = setRedisAdditionalOptions(opts, conf.AdditionalOptions)
+	opts := &redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", redisHost, redisPort),
+		Username: redisUser,
+		Password: redisPassword,
+		DB:       redisNDb,
+	}
 
-		redisClient = redis.NewClient(opts)
-	})
-	return redisClient, err
+	opts = setRedisAdditionalOptions(opts, conf.AdditionalOptions)
+
+	redisClient := redis.NewClient(opts)
+
+	// Check Redis connection
+	if err := testRedisConnection(redisClient); err != nil {
+		return nil, fmt.Errorf("error: Redis connection error: %w", err)
+	}
+
+	return redisClient, nil
 }
 
+// testRedisConnection checks Redis connection
+func testRedisConnection(client *redis.Client) error {
+	if client == nil {
+		return fmt.Errorf("error: Redis client is nil")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Check ping
+	if err := client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("error: Redis ping failed: %w", err)
+	}
+
+	return nil
+}
+
+// setRedisAdditionalOptions sets additional options for Redis client
 func setRedisAdditionalOptions(opts *redis.Options, additionalOptions RedisAdditionalOptions) *redis.Options {
+	if opts == nil {
+		return nil
+	}
 
 	defaultDialTimeout := 10 * time.Second
 	defaultReadTimeout := 30 * time.Second

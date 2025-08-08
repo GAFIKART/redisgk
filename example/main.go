@@ -8,7 +8,7 @@ import (
 	redisgklib "github.com/GAFIKART/redisgk/lib"
 )
 
-// User - пример структуры для демонстрации работы с объектами
+// User - example structure for demonstrating object operations
 type User struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
@@ -17,7 +17,7 @@ type User struct {
 	IsActive bool   `json:"is_active"`
 }
 
-// Product - еще одна структура для демонстрации
+// Product - another structure for demonstration
 type Product struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
@@ -27,9 +27,9 @@ type Product struct {
 }
 
 func main() {
-	fmt.Println("=== Примеры использования библиотеки redisgk ===")
+	fmt.Println("=== RedisGK Library Usage Examples ===")
 
-	// Конфигурация подключения к Redis
+	// Redis connection configuration
 	config := redisgklib.RedisConfConn{
 		Host:     "localhost",
 		Port:     6379,
@@ -46,241 +46,298 @@ func main() {
 		},
 	}
 
-	// Создание экземпляра RedisGk
+	// Create RedisGk instance with automatic initialization
 	redisGk, err := redisgklib.NewRedisGk(config)
 	if err != nil {
-		log.Fatalf("Ошибка подключения к Redis: %v", err)
+		log.Fatalf("Redis connection error: %v", err)
 	}
 	defer func() {
 		if err := redisGk.Close(); err != nil {
-			log.Printf("Ошибка закрытия соединения: %v", err)
+			log.Printf("Connection close error: %v", err)
 		}
 	}()
 
-	fmt.Println("✅ Подключение к Redis установлено")
+	// ========================================
+	// EXAMPLE 1: Getting notification channel
+	// ========================================
+	fmt.Println("\n=== EXAMPLE 1: Getting notification channel ===")
 
-	// Пример 1: Работа со строками
-	fmt.Println("=== 1. РАБОТА СО СТРОКАМИ ===")
+	// Get notification channel
+	expirationChan := redisGk.ListenChannelExpirationManager()
+
+	// Start goroutine for processing notifications
+	go func() {
+		for event := range expirationChan {
+			fmt.Printf("📢 Key expired: %s = '%s' at %s\n",
+				event.Key, event.Value, event.ExpiredAt.Format("15:04:05"))
+		}
+	}()
+
+	fmt.Println("✅ Channel listener started")
+
+	// ========================================
+	// EXAMPLE 2: Data operations demonstration
+	// ========================================
+	fmt.Println("\n=== EXAMPLE 2: Data operations ===")
+
+	// Example 1: Working with strings
+	fmt.Println("=== 1. STRING OPERATIONS ===")
 	demoStrings(redisGk)
 
-	// Пример 2: Работа с объектами
-	fmt.Println("\n=== 2. РАБОТА С ОБЪЕКТАМИ ===")
+	// Example 2: Working with objects
+	fmt.Println("\n=== 2. OBJECT OPERATIONS ===")
 	demoObjects(redisGk)
 
-	// Пример 3: Поиск объектов
-	fmt.Println("\n=== 3. ПОИСК ОБЪЕКТОВ ===")
+	// Example 3: Object search
+	fmt.Println("\n=== 3. OBJECT SEARCH ===")
 	demoFindObjects(redisGk)
 
-	// Пример 4: Проверка существования ключей
-	fmt.Println("\n=== 4. ПРОВЕРКА СУЩЕСТВОВАНИЯ КЛЮЧЕЙ ===")
+	// Example 4: Key existence check
+	fmt.Println("\n=== 4. KEY EXISTENCE CHECK ===")
 	demoExists(redisGk)
 
-	// Пример 5: Удаление ключей
-	fmt.Println("\n=== 5. УДАЛЕНИЕ КЛЮЧЕЙ ===")
+	// Example 5: Key deletion
+	fmt.Println("\n=== 5. KEY DELETION ===")
 	demoDelete(redisGk)
 
-	// Пример 6: Получение списка ключей
-	fmt.Println("\n=== 6. ПОЛУЧЕНИЕ СПИСКА КЛЮЧЕЙ ===")
+	// Example 6: Getting key list
+	fmt.Println("\n=== 6. GETTING KEY LIST ===")
 	demoGetKeys(redisGk)
 
-	fmt.Println("\n=== ВСЕ ПРИМЕРЫ ЗАВЕРШЕНЫ ===")
+	// Example 7: List operations
+	fmt.Println("\n=== 7. LIST OPERATIONS ===")
+	demoListOperations(redisGk)
+
+	// ========================================
+	// EXAMPLE 3: Key expiration notification demonstration
+	// ========================================
+	fmt.Println("\n=== EXAMPLE 3: Notification demonstration ===")
+
+	// Create test keys with TTL for demonstration
+	testKeys := []struct {
+		key   string
+		value string
+		ttl   time.Duration
+	}{
+		{"demo:expire:1", "value 1", 3 * time.Second},
+		{"demo:expire:2", "value 2", 5 * time.Second},
+		{"demo:expire:3", "value 3", 7 * time.Second},
+		{"demo:expire:4", "value 4", 10 * time.Second},
+		{"demo:expire:5", "value 5", 15 * time.Second},
+	}
+
+	fmt.Println("📝 Creating test keys with TTL...")
+	for _, testKey := range testKeys {
+		err := redisGk.SetString([]string{testKey.key}, testKey.value, testKey.ttl)
+		if err != nil {
+			log.Printf("Error creating key %s: %v", testKey.key, err)
+			continue
+		}
+		fmt.Printf("✅ Key created: %s = '%s' (TTL: %v)\n", testKey.key, testKey.value, testKey.ttl)
+	}
+
+	fmt.Println("\n⏳ Waiting for keys to expire...")
+	fmt.Println("(Press Ctrl+C to exit)")
+
+	// Wait for program completion
+	select {}
 }
 
-// demoStrings - демонстрация работы со строками
+// demoStrings - string operations demonstration
 func demoStrings(redisGk *redisgklib.RedisGk) {
-	fmt.Println("📝 Сохранение строки...")
+	fmt.Println("📝 Saving string...")
 
-	// Сохранение строки без TTL
-	err := redisGk.SetString([]string{"user", "profile", "name"}, "Иван Петров")
+	// Save string without TTL
+	err := redisGk.SetString([]string{"user", "profile", "name"}, "John Smith")
 	if err != nil {
-		log.Printf("Ошибка сохранения строки: %v", err)
+		log.Printf("String save error: %v", err)
 		return
 	}
-	fmt.Println("✅ Строка сохранена: user:profile:name = 'Иван Петров'")
+	fmt.Println("✅ String saved: user:profile:name = 'John Smith'")
 
-	// Сохранение строки с TTL
+	// Save string with TTL
 	err = redisGk.SetString([]string{"temp", "session", "token"}, "abc123xyz", 30*time.Second)
 	if err != nil {
-		log.Printf("Ошибка сохранения строки с TTL: %v", err)
+		log.Printf("String save with TTL error: %v", err)
 		return
 	}
-	fmt.Println("✅ Строка с TTL сохранена: temp:session:token = 'abc123xyz' (TTL: 30s)")
+	fmt.Println("✅ String with TTL saved: temp:session:token = 'abc123xyz' (TTL: 30s)")
 
-	// Получение строки
+	// Get string
 	value, err := redisGk.GetString([]string{"user", "profile", "name"})
 	if err != nil {
-		log.Printf("Ошибка получения строки: %v", err)
+		log.Printf("String get error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Строка получена: %s\n", value)
+	fmt.Printf("✅ String retrieved: %s\n", value)
 
-	// Попытка получить несуществующий ключ
+	// Try to get non-existent key
 	_, err = redisGk.GetString([]string{"nonexistent", "key"})
 	if err != nil {
-		fmt.Printf("✅ Ожидаемая ошибка для несуществующего ключа: %v\n", err)
+		fmt.Printf("✅ Expected error for non-existent key: %v\n", err)
 	}
 }
 
-// demoObjects - демонстрация работы с объектами
+// demoObjects - object operations demonstration
 func demoObjects(redisGk *redisgklib.RedisGk) {
-	fmt.Println("📦 Сохранение объекта User...")
+	fmt.Println("📦 Saving User object...")
 
-	// Создание объекта User
+	// Create User object
 	user := User{
 		ID:       1,
-		Name:     "Анна Сидорова",
+		Name:     "Anna Sidorova",
 		Email:    "anna@example.com",
 		Age:      28,
 		IsActive: true,
 	}
 
-	// Сохранение объекта
+	// Save object
 	err := redisgklib.SetObj(redisGk, []string{"users", "1"}, user)
 	if err != nil {
-		log.Printf("Ошибка сохранения объекта: %v", err)
+		log.Printf("Object save error: %v", err)
 		return
 	}
-	fmt.Println("✅ Объект User сохранен: users:1")
+	fmt.Println("✅ User object saved: users:1")
 
-	// Сохранение объекта с TTL
+	// Save object with TTL
 	product := Product{
 		ID:          "prod_001",
-		Name:        "Смартфон Galaxy S21",
+		Name:        "Galaxy S21 Smartphone",
 		Price:       89999.99,
-		Description: "Мощный смартфон с отличной камерой",
-		Category:    "Электроника",
+		Description: "Powerful smartphone with excellent camera",
+		Category:    "Electronics",
 	}
 
 	err = redisgklib.SetObj(redisGk, []string{"products", "prod_001"}, product, 1*time.Hour)
 	if err != nil {
-		log.Printf("Ошибка сохранения объекта с TTL: %v", err)
+		log.Printf("Object save with TTL error: %v", err)
 		return
 	}
-	fmt.Println("✅ Объект Product сохранен с TTL: products:prod_001 (TTL: 1h)")
+	fmt.Println("✅ Product object saved with TTL: products:prod_001 (TTL: 1h)")
 
-	// Получение объекта User
+	// Get User object
 	retrievedUser, err := redisgklib.GetObj[User](redisGk, []string{"users", "1"})
 	if err != nil {
-		log.Printf("Ошибка получения объекта User: %v", err)
+		log.Printf("User object get error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Объект User получен: ID=%d, Name=%s, Email=%s\n",
+	fmt.Printf("✅ User object retrieved: ID=%d, Name=%s, Email=%s\n",
 		retrievedUser.ID, retrievedUser.Name, retrievedUser.Email)
 
-	// Получение объекта Product
+	// Get Product object
 	retrievedProduct, err := redisgklib.GetObj[Product](redisGk, []string{"products", "prod_001"})
 	if err != nil {
-		log.Printf("Ошибка получения объекта Product: %v", err)
+		log.Printf("Product object get error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Объект Product получен: ID=%s, Name=%s, Price=%.2f\n",
+	fmt.Printf("✅ Product object retrieved: ID=%s, Name=%s, Price=%.2f\n",
 		retrievedProduct.ID, retrievedProduct.Name, retrievedProduct.Price)
 }
 
-// demoFindObjects - демонстрация поиска объектов
+// demoFindObjects - object search demonstration
 func demoFindObjects(redisGk *redisgklib.RedisGk) {
-	fmt.Println("🔍 Поиск объектов...")
+	fmt.Println("🔍 Searching objects...")
 
-	// Создание нескольких пользователей для поиска
+	// Create several users for search
 	users := []User{
-		{ID: 2, Name: "Петр Иванов", Email: "petr@example.com", Age: 35, IsActive: true},
-		{ID: 3, Name: "Мария Козлова", Email: "maria@example.com", Age: 24, IsActive: false},
-		{ID: 4, Name: "Сергей Волков", Email: "sergey@example.com", Age: 42, IsActive: true},
+		{ID: 2, Name: "Peter Ivanov", Email: "petr@example.com", Age: 35, IsActive: true},
+		{ID: 3, Name: "Maria Kozlova", Email: "maria@example.com", Age: 24, IsActive: false},
+		{ID: 4, Name: "Sergey Volkov", Email: "sergey@example.com", Age: 42, IsActive: true},
 	}
 
-	// Сохранение пользователей
+	// Save users
 	for _, user := range users {
 		err := redisgklib.SetObj(redisGk, []string{"users", fmt.Sprintf("%d", user.ID)}, user)
 		if err != nil {
-			log.Printf("Ошибка сохранения пользователя %d: %v", user.ID, err)
+			log.Printf("Error saving user %d: %v", user.ID, err)
 			continue
 		}
-		fmt.Printf("✅ Пользователь %d сохранен\n", user.ID)
+		fmt.Printf("✅ User %d saved\n", user.ID)
 	}
 
-	// Поиск всех пользователей
+	// Search all users
 	foundUsers, err := redisgklib.FindObj[User](redisGk, []string{"users"})
 	if err != nil {
-		log.Printf("Ошибка поиска пользователей: %v", err)
+		log.Printf("User search error: %v", err)
 		return
 	}
 
-	fmt.Printf("✅ Найдено пользователей: %d\n", len(foundUsers))
+	fmt.Printf("✅ Found users: %d\n", len(foundUsers))
 	for key, user := range foundUsers {
 		fmt.Printf("   - %s: %s (%s)\n", key, user.Name, user.Email)
 	}
 
-	// Поиск с ограничением количества результатов
+	// Search with result count limit
 	foundUsersLimited, err := redisgklib.FindObj[User](redisGk, []string{"users"}, 2)
 	if err != nil {
-		log.Printf("Ошибка поиска пользователей с ограничением: %v", err)
+		log.Printf("Limited user search error: %v", err)
 		return
 	}
 
-	fmt.Printf("✅ Найдено пользователей (ограничение 2): %d\n", len(foundUsersLimited))
+	fmt.Printf("✅ Found users (limit 2): %d\n", len(foundUsersLimited))
 }
 
-// demoExists - демонстрация проверки существования ключей
+// demoExists - key existence check demonstration
 func demoExists(redisGk *redisgklib.RedisGk) {
-	fmt.Println("🔍 Проверка существования ключей...")
+	fmt.Println("🔍 Checking key existence...")
 
-	// Проверка существующего ключа
+	// Check existing key
 	exists, err := redisGk.Exists([]string{"users", "1"})
 	if err != nil {
-		log.Printf("Ошибка проверки существования ключа: %v", err)
+		log.Printf("Key existence check error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Ключ 'users:1' существует: %t\n", exists)
+	fmt.Printf("✅ Key 'users:1' exists: %t\n", exists)
 
-	// Проверка несуществующего ключа
+	// Check non-existent key
 	exists, err = redisGk.Exists([]string{"nonexistent", "key"})
 	if err != nil {
-		log.Printf("Ошибка проверки существования ключа: %v", err)
+		log.Printf("Key existence check error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Ключ 'nonexistent:key' существует: %t\n", exists)
+	fmt.Printf("✅ Key 'nonexistent:key' exists: %t\n", exists)
 }
 
-// demoDelete - демонстрация удаления ключей
+// demoDelete - key deletion demonstration
 func demoDelete(redisGk *redisgklib.RedisGk) {
-	fmt.Println("🗑️ Удаление ключей...")
+	fmt.Println("🗑️ Deleting keys...")
 
-	// Создание тестового ключа для удаления
-	err := redisGk.SetString([]string{"test", "delete", "key"}, "значение для удаления")
+	// Create test key for deletion
+	err := redisGk.SetString([]string{"test", "delete", "key"}, "value for deletion")
 	if err != nil {
-		log.Printf("Ошибка создания тестового ключа: %v", err)
+		log.Printf("Test key creation error: %v", err)
 		return
 	}
-	fmt.Println("✅ Тестовый ключ создан: test:delete:key")
+	fmt.Println("✅ Test key created: test:delete:key")
 
-	// Проверка существования перед удалением
+	// Check existence before deletion
 	exists, err := redisGk.Exists([]string{"test", "delete", "key"})
 	if err != nil {
-		log.Printf("Ошибка проверки существования: %v", err)
+		log.Printf("Existence check error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Ключ существует перед удалением: %t\n", exists)
+	fmt.Printf("✅ Key exists before deletion: %t\n", exists)
 
-	// Удаление ключа
+	// Delete key
 	err = redisGk.Del([]string{"test", "delete", "key"})
 	if err != nil {
-		log.Printf("Ошибка удаления ключа: %v", err)
+		log.Printf("Key deletion error: %v", err)
 		return
 	}
-	fmt.Println("✅ Ключ удален: test:delete:key")
+	fmt.Println("✅ Key deleted: test:delete:key")
 
-	// Проверка существования после удаления
+	// Check existence after deletion
 	exists, err = redisGk.Exists([]string{"test", "delete", "key"})
 	if err != nil {
-		log.Printf("Ошибка проверки существования: %v", err)
+		log.Printf("Existence check error: %v", err)
 		return
 	}
-	fmt.Printf("✅ Ключ существует после удаления: %t\n", exists)
+	fmt.Printf("✅ Key exists after deletion: %t\n", exists)
 
-	// Удаление нескольких ключей
-	fmt.Println("🗑️ Удаление всех созданных ключей...")
+	// Delete multiple keys
+	fmt.Println("🗑️ Deleting all created keys...")
 
-	// Удаляем все ключи одним вызовом
+	// Delete all keys in one call
 	err = redisGk.Del(
 		[]string{"user", "profile", "name"},
 		[]string{"temp", "session", "token"},
@@ -291,37 +348,98 @@ func demoDelete(redisGk *redisgklib.RedisGk) {
 		[]string{"products", "prod_001"},
 	)
 	if err != nil {
-		log.Printf("Ошибка удаления ключей: %v", err)
+		log.Printf("Keys deletion error: %v", err)
 	} else {
-		fmt.Println("✅ Все ключи удалены успешно")
+		fmt.Println("✅ All keys deleted successfully")
 	}
 }
 
-// demoGetKeys - демонстрация получения списка ключей
+// demoGetKeys - getting key list demonstration
 func demoGetKeys(redisGk *redisgklib.RedisGk) {
-	fmt.Println("🔍 Получение списка ключей...")
+	fmt.Println("🔍 Getting key list...")
 
-	// Получение списка всех ключей
+	// Get list of all keys
 	keys, err := redisGk.GetKeys([]string{})
 	if err != nil {
-		log.Printf("Ошибка получения списка ключей: %v", err)
+		log.Printf("Key list retrieval error: %v", err)
 		return
 	}
 
-	fmt.Printf("✅ Найдено ключей: %d\n", len(keys))
+	fmt.Printf("✅ Found keys: %d\n", len(keys))
 	for _, key := range keys {
 		fmt.Println("   -", key)
 	}
 
-	// Получение ключей по паттерну
+	// Get keys by pattern
 	userKeys, err := redisGk.GetKeys([]string{"users"})
 	if err != nil {
-		log.Printf("Ошибка получения ключей пользователей: %v", err)
+		log.Printf("User keys retrieval error: %v", err)
 		return
 	}
 
-	fmt.Printf("✅ Найдено ключей пользователей: %d\n", len(userKeys))
+	fmt.Printf("✅ Found user keys: %d\n", len(userKeys))
 	for _, key := range userKeys {
 		fmt.Println("   -", key)
+	}
+}
+
+// demoListOperations - list operations demonstration
+func demoListOperations(redisGk *redisgklib.RedisGk) {
+	fmt.Println("📋 List operations demonstration...")
+
+	// Create a list
+	err := redisGk.LPush([]string{"queue", "tasks"}, "task 1", "task 2", "task 3")
+	if err != nil {
+		log.Printf("List creation error: %v", err)
+		return
+	}
+	fmt.Println("✅ List created with tasks")
+
+	// Add more items to the end
+	err = redisGk.RPush([]string{"queue", "tasks"}, "task 4", "task 5")
+	if err != nil {
+		log.Printf("List append error: %v", err)
+		return
+	}
+	fmt.Println("✅ Added more tasks to the end")
+
+	// Get list length
+	length, err := redisGk.LLen([]string{"queue", "tasks"})
+	if err != nil {
+		log.Printf("List length error: %v", err)
+		return
+	}
+	fmt.Printf("✅ List length: %d\n", length)
+
+	// Get first item
+	firstTask, err := redisGk.LPop([]string{"queue", "tasks"})
+	if err != nil {
+		log.Printf("List pop error: %v", err)
+		return
+	}
+	fmt.Printf("✅ Retrieved first task: %s\n", firstTask)
+
+	// Get last item
+	lastTask, err := redisGk.RPop([]string{"queue", "tasks"})
+	if err != nil {
+		log.Printf("List pop error: %v", err)
+		return
+	}
+	fmt.Printf("✅ Retrieved last task: %s\n", lastTask)
+
+	// Get range of items
+	items, err := redisGk.LRange([]string{"queue", "tasks"}, 0, -1)
+	if err != nil {
+		log.Printf("List range error: %v", err)
+		return
+	}
+	fmt.Printf("✅ Remaining tasks: %v\n", items)
+
+	// Clean up
+	err = redisGk.Del([]string{"queue", "tasks"})
+	if err != nil {
+		log.Printf("List cleanup error: %v", err)
+	} else {
+		fmt.Println("✅ List cleaned up")
 	}
 }

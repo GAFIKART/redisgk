@@ -1,7 +1,6 @@
 package redisgklib
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -9,23 +8,28 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// SetObj saves object to Redis with automatic JSON serialization
 func SetObj[T any](
 	v *RedisGk,
 	keyPath []string,
 	value T,
 	ttlSlice ...time.Duration,
 ) error {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
 	keyP, err := slicePathsConvertor(keyPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("key conversion error: %w", err)
 	}
 
 	jsonData, err := json.Marshal(value)
 	if err != nil {
-		return err
+		return fmt.Errorf("object serialization error: %w", err)
 	}
 
 	err = checkMaxSizeData(jsonData)
@@ -41,22 +45,32 @@ func SetObj[T any](
 	return v.redisClient.Set(ctx, keyP, jsonData, ttl).Err()
 }
 
+// SetString saves string to Redis
 func (v *RedisGk) SetString(
 	keyPath []string,
 	value string,
 	ttlSlice ...time.Duration,
 ) error {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
 	keyP, err := slicePathsConvertor(keyPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("key conversion error: %w", err)
 	}
 
 	err = checkMaxSizeKey(keyP)
 	if err != nil {
 		return err
+	}
+
+	// Check value size
+	if len(value) > maxSizeData {
+		return fmt.Errorf("value size (%d bytes) exceeds Redis limit (512 MB)", len(value))
 	}
 
 	ttl := time.Duration(0)
@@ -67,40 +81,54 @@ func (v *RedisGk) SetString(
 	return v.redisClient.Set(ctx, keyP, value, ttl).Err()
 }
 
+// GetObj gets object from Redis with automatic JSON deserialization
 func GetObj[T any](
 	v *RedisGk,
 	keyPath []string,
 ) (*T, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return nil, fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
+
 	keyP, err := slicePathsConvertor(keyPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("key conversion error: %w", err)
 	}
+
 	jsonStr, err := v.redisClient.Get(ctx, keyP).Result()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, fmt.Errorf("key not found: %s", keyP)
 		}
-		return nil, err
+		return nil, fmt.Errorf("error getting key %s: %w", keyP, err)
 	}
+
 	var result T
 	err = json.Unmarshal([]byte(jsonStr), &result)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("object deserialization error: %w", err)
 	}
+
 	return &result, nil
 }
 
+// GetString gets string from Redis
 func (v *RedisGk) GetString(
 	keyPath []string,
 ) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return "", fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
 	keyP, err := slicePathsConvertor(keyPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("key conversion error: %w", err)
 	}
 
 	result, err := v.redisClient.Get(ctx, keyP).Result()
@@ -108,55 +136,83 @@ func (v *RedisGk) GetString(
 		if err == redis.Nil {
 			return "", fmt.Errorf("key not found: %s", keyP)
 		}
-		return "", err
+		return "", fmt.Errorf("error getting key %s: %w", keyP, err)
 	}
 
 	return result, nil
 }
 
+// Del deletes one or multiple keys from Redis
 func (v *RedisGk) Del(keyPath ...[]string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
-	keysPDel := make([]string, 0)
-	for _, key := range keyPath {
+	if len(keyPath) == 0 {
+		return fmt.Errorf("no keys specified for deletion")
+	}
+
+	keysPDel := make([]string, 0, len(keyPath))
+	for i, key := range keyPath {
 		keyM, err := slicePathsConvertor(key)
 		if err != nil {
-			return err
+			return fmt.Errorf("key conversion error %d: %w", i, err)
 		}
 		keysPDel = append(keysPDel, keyM)
 	}
 
-	return v.redisClient.Del(ctx, keysPDel...).Err()
+	result, err := v.redisClient.Del(ctx, keysPDel...).Result()
+	if err != nil {
+		return fmt.Errorf("error deleting keys: %w", err)
+	}
+
+	// Check that at least one key was deleted
+	if result == 0 {
+		return fmt.Errorf("none of the specified keys were found for deletion")
+	}
+
+	return nil
 }
 
+// FindObj searches objects by key pattern
 func FindObj[T any](
 	v *RedisGk,
 	patternPath []string,
 	countRes ...int64,
 ) (map[string]*T, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return nil, fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
 	pattern, err := slicePathsConvertor(patternPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pattern conversion error: %w", err)
 	}
 	pattern += "*"
 
 	results := make(map[string]*T)
 	var cursor uint64
 
-	var count int64
+	var count int64 = 100 // Default value
 	if len(countRes) > 0 {
 		count = countRes[0]
+		if count <= 0 {
+			count = 100
+		}
 	}
 
+	// Process results directly without additional goroutines
 	for {
 		var keys []string
 		keys, cursor, err = v.redisClient.Scan(ctx, cursor, pattern, count).Result()
 		if err != nil {
-			return nil, fmt.Errorf("error scan keys: %w", err)
+			return nil, fmt.Errorf("key scanning error: %w", err)
 		}
 
 		if len(keys) == 0 {
@@ -166,11 +222,13 @@ func FindObj[T any](
 			continue
 		}
 
+		// Get values for all keys in one request
 		values, err := v.redisClient.MGet(ctx, keys...).Result()
 		if err != nil {
-			return nil, fmt.Errorf("error mget values: %w", err)
+			return nil, fmt.Errorf("error getting values: %w", err)
 		}
 
+		// Process results
 		for i, value := range values {
 			if value == nil {
 				continue
@@ -184,9 +242,11 @@ func FindObj[T any](
 			var obj T
 			err = json.Unmarshal([]byte(jsonStr), &obj)
 			if err != nil {
+				// Skip objects with deserialization errors
 				continue
 			}
 
+			// Add result directly to map
 			results[keys[i]] = &obj
 		}
 
@@ -198,13 +258,18 @@ func FindObj[T any](
 	return results, nil
 }
 
+// GetKeys returns list of keys by pattern
 func (v *RedisGk) GetKeys(patternPath []string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return nil, fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
 	pattern, err := slicePathsConvertor(patternPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pattern conversion error: %w", err)
 	}
 	pattern += "*"
 
@@ -213,9 +278,9 @@ func (v *RedisGk) GetKeys(patternPath []string) ([]string, error) {
 
 	for {
 		var keys []string
-		keys, cursor, err = v.redisClient.Scan(ctx, cursor, pattern, 0).Result()
+		keys, cursor, err = v.redisClient.Scan(ctx, cursor, pattern, 100).Result()
 		if err != nil {
-			return nil, fmt.Errorf("error scan keys: %w", err)
+			return nil, fmt.Errorf("key scanning error: %w", err)
 		}
 
 		allKeys = append(allKeys, keys...)
@@ -228,18 +293,23 @@ func (v *RedisGk) GetKeys(patternPath []string) ([]string, error) {
 	return allKeys, nil
 }
 
+// Exists checks key existence
 func (v *RedisGk) Exists(key []string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), v.baseCtx)
+	if v == nil {
+		return false, fmt.Errorf("RedisGk instance is nil")
+	}
+
+	ctx, cancel := v.createContextWithTimeout()
 	defer cancel()
 
 	keyP, err := slicePathsConvertor(key)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("key conversion error: %w", err)
 	}
 
 	result, err := v.redisClient.Exists(ctx, keyP).Result()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("error checking key existence: %w", err)
 	}
 
 	return result > 0, nil

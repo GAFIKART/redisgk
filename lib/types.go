@@ -1,6 +1,8 @@
 package redisgklib
 
-import "time"
+import (
+	"time"
+)
 
 type RedisConfConn struct {
 	Host     string
@@ -20,4 +22,11 @@ type RedisAdditionalOptions struct {
 	PoolTimeout  time.Duration
 
 	BaseCtx time.Duration
+}
+
+// KeyExpirationEvent - structure for key expiration event
+type KeyExpirationEvent struct {
+	Key       string    `json:"key"`        // Key name
+	Value     string    `json:"value"`      // Record body (value)
+	ExpiredAt time.Time `json:"expired_at"` // Expiration time
 }

@@ -1,24 +1,28 @@
-# RedisGK - Библиотека для работы с Redis
+# RedisGK - Redis Library
 
-Библиотека `redisgk` предоставляет удобную обертку над официальным Redis клиентом для Go, объединяя всю необходимую логику для работы с Redis в ваших проектах.
+The `redisgk` library provides a convenient wrapper over the official Redis client for Go, combining all the necessary logic for working with Redis in your projects with enhanced security and performance features.
 
-## Особенности
+## Features
 
-- 🚀 **Простота использования** - удобный API для работы с Redis
-- 🔒 **Типобезопасность** - поддержка дженериков для работы с объектами
-- ⚡ **Производительность** - оптимизированные настройки подключения
-- 🛡️ **Валидация** - проверка конфигурации и размеров данных
-- 🔧 **Гибкость** - настраиваемые таймауты и параметры пула соединений
-- 🔍 **Поиск** - поиск объектов по паттерну ключей
-- 🗑️ **Массовые операции** - удаление нескольких ключей за один вызов
+- 🚀 **Easy to use** - convenient API for working with Redis
+- 🔒 **Type safety** - support for generics for working with objects
+- ⚡ **Performance** - optimized connection settings and goroutine pool
+- 🛡️ **Security** - comprehensive input validation and nil checks
+- 🔧 **Flexibility** - configurable timeouts and connection pool parameters
+- 🔍 **Search** - search objects by key pattern with optimized processing
+- 🗑️ **Bulk operations** - delete multiple keys in one call
+- 🔔 **Notifications** - automatic key expiration notifications
+- 📋 **Lists** - support for Redis list operations
+- 🛡️ **Resource safety** - proper cleanup and goroutine management
+- 🔍 **Error handling** - detailed error messages and validation
 
-## Установка
+## Installation
 
 ```bash
 go get github.com/GAFIKART/redisgk
 ```
 
-## Быстрый старт
+## Quick Start
 
 ```go
 package main
@@ -37,11 +41,11 @@ type User struct {
 }
 
 func main() {
-    // Конфигурация подключения к Redis
+    // Redis connection configuration
     config := redisgklib.RedisConfConn{
         Host:     "localhost",
         Port:     6379,
-        User:     "", // Опционально
+        User:     "", // Optional
         Password: "your_password",
         DB:       0,
         AdditionalOptions: redisgklib.RedisAdditionalOptions{
@@ -54,132 +58,159 @@ func main() {
         },
     }
 
-    // Создание клиента Redis
+    // Create Redis client
     redisClient, err := redisgklib.NewRedisGk(config)
     if err != nil {
-        log.Fatal("Ошибка подключения к Redis:", err)
+        log.Fatal("Redis connection error:", err)
     }
     defer redisClient.Close()
 
-    // Сохранение объекта
-    user := User{ID: 1, Name: "Иван", Age: 25}
+    // Get key expiration notification channel
+    expirationChan := redisClient.ListenChannelExpirationManager()
+    go func() {
+        for event := range expirationChan {
+            log.Printf("Key expired: %s = '%s'", event.Key, event.Value)
+        }
+    }()
+
+    // Save object
+    user := User{ID: 1, Name: "John", Age: 25}
     err = redisgklib.SetObj(redisClient, []string{"users", "1"}, user, 1*time.Hour)
     if err != nil {
-        log.Fatal("Ошибка сохранения:", err)
+        log.Fatal("Save error:", err)
     }
 
-    // Получение объекта
+    // Get object
     retrievedUser, err := redisgklib.GetObj[User](redisClient, []string{"users", "1"})
     if err != nil {
-        log.Fatal("Ошибка получения:", err)
+        log.Fatal("Get error:", err)
     }
-    log.Printf("Получен пользователь: %+v", *retrievedUser)
+    log.Printf("Retrieved user: %+v", *retrievedUser)
 
-    // Работа со строками
-    err = redisClient.SetString([]string{"greeting"}, "Привет, мир!", 30*time.Minute)
+    // Work with strings
+    err = redisClient.SetString([]string{"greeting"}, "Hello, world!", 30*time.Minute)
     if err != nil {
-        log.Fatal("Ошибка сохранения строки:", err)
+        log.Fatal("String save error:", err)
     }
 
     greeting, err := redisClient.GetString([]string{"greeting"})
     if err != nil {
-        log.Fatal("Ошибка получения строки:", err)
+        log.Fatal("String get error:", err)
     }
-    log.Println("Приветствие:", greeting)
+    log.Println("Greeting:", greeting)
 
-    // Поиск объектов по паттерну
+    // Work with lists
+    err = redisClient.LPush([]string{"queue", "tasks"}, "task 1", "task 2")
+    if err != nil {
+        log.Fatal("List add error:", err)
+    }
+
+    task, err := redisClient.LPop([]string{"queue", "tasks"})
+    if err != nil {
+        log.Fatal("List get error:", err)
+    }
+    log.Println("Retrieved task:", task)
+
+    // Search objects by pattern
     users, err := redisgklib.FindObj[User](redisClient, []string{"users"}, 100)
     if err != nil {
-        log.Fatal("Ошибка поиска:", err)
+        log.Fatal("Search error:", err)
     }
-    log.Printf("Найдено пользователей: %d", len(users))
+    log.Printf("Found users: %d", len(users))
 
-    // Проверка существования ключа
-    exists, err := redisClient.Exists("users:1")
+    // Check key existence
+    exists, err := redisClient.Exists([]string{"users", "1"})
     if err != nil {
-        log.Fatal("Ошибка проверки:", err)
+        log.Fatal("Check error:", err)
     }
-    log.Printf("Ключ существует: %t", exists)
+    log.Printf("Key exists: %t", exists)
 
-    // Получение списка ключей
+    // Get list of keys
     keys, err := redisClient.GetKeys([]string{"users"})
     if err != nil {
-        log.Fatal("Ошибка получения списка ключей:", err)
+        log.Fatal("Get keys error:", err)
     }
-    log.Printf("Найдены ключи: %v", keys)
+    log.Printf("Found keys: %v", keys)
 
-    // Удаление нескольких ключей за один вызов
+    // Delete multiple keys in one call
     err = redisClient.Del(
         []string{"users", "1"},
         []string{"greeting"},
     )
     if err != nil {
-        log.Fatal("Ошибка удаления:", err)
+        log.Fatal("Delete error:", err)
     }
 }
 ```
 
-## Примеры использования
+## Usage Examples
 
-Полные примеры использования всех методов библиотеки доступны в папке [`example/`](./example/):
+Complete examples of using all library methods are available in the [`example/`](./example/) folder:
 
 ```bash
 cd example
 go run main.go
 ```
 
-Примеры демонстрируют:
-- Работу со строками и объектами
-- Поиск объектов по паттерну
-- Проверку существования ключей
-- Получение списка ключей
-- Массовое удаление ключей
-- Обработку ошибок
+Examples demonstrate:
+- Working with strings and objects
+- Key expiration notifications
+- Working with lists
+- Searching objects by pattern
+- Checking key existence
+- Getting list of keys
+- Bulk key deletion
+- Error handling and validation
 
 ## API
 
-### Основные функции
+### Main Functions
 
 #### `NewRedisGk(config RedisConfConn) (*RedisGk, error)`
-Создает новый экземпляр клиента Redis.
+Creates a new Redis client instance with automatic key expiration notification setup. Includes comprehensive validation and security checks.
 
 #### `SetObj[T any](client *RedisGk, keyPath []string, value T, ttl ...time.Duration) error`
-Сохраняет объект в Redis с автоматической сериализацией в JSON.
+Saves an object to Redis with automatic JSON serialization. Includes data size validation and nil checks.
 
 #### `GetObj[T any](client *RedisGk, keyPath []string) (*T, error)`
-Получает объект из Redis с автоматической десериализацией из JSON.
+Gets an object from Redis with automatic JSON deserialization. Handles missing keys gracefully.
 
 #### `FindObj[T any](client *RedisGk, patternPath []string, count ...int64) (map[string]*T, error)`
-Поиск объектов по паттерну ключей.
+Search objects by key pattern with optimized processing and goroutine safety.
 
-### Методы RedisGk
+### RedisGk Methods
 
-#### `SetString(keyPath []string, value string, ttl ...time.Duration) error`
-Сохраняет строку в Redis.
+#### Strings
+- `SetString(keyPath []string, value string, ttl ...time.Duration) error`
+- `GetString(keyPath []string) (string, error)`
 
-#### `GetString(keyPath []string) (string, error)`
-Получает строку из Redis.
+#### Lists
+- `LPush(keyPath []string, values ...string) error` - add to beginning of list
+- `RPush(keyPath []string, values ...string) error` - add to end of list
+- `LPop(keyPath []string) (string, error)` - get first element
+- `RPop(keyPath []string) (string, error)` - get last element
+- `LRange(keyPath []string, start, stop int64) ([]string, error)` - get range
+- `LLen(keyPath []string) (int64, error)` - get list length
 
-#### `Del(keyPath ...[]string) error`
-Удаляет один или несколько ключей из Redis. Поддерживает вариативные параметры для удаления множественных ключей за один вызов.
+#### Key Management
+- `Del(keyPath ...[]string) error` - delete one or multiple keys
+- `Exists(key []string) (bool, error)` - check key existence
+- `GetKeys(patternPath []string) ([]string, error)` - get list of keys
 
-#### `Exists(key string) (bool, error)`
-Проверяет существование ключа.
+#### Expiration Notifications
+- `ListenChannelExpirationManager() <-chan KeyExpirationEvent` - get notification channel
 
-#### `GetKeys(patternPath []string) ([]string, error)`
-Возвращает массив ключей, соответствующих паттерну. Если `patternPath` пустой, возвращает все ключи.
+#### Connection Management
+- `Close() error` - close Redis connection with proper cleanup
 
-#### `Close() error`
-Закрывает соединение с Redis.
-
-## Конфигурация
+## Configuration
 
 ### RedisConfConn
 ```go
 type RedisConfConn struct {
     Host     string
     Port     int
-    User     string        // Опционально
+    User     string        // Optional
     Password string
     DB       int
     AdditionalOptions RedisAdditionalOptions
@@ -198,26 +229,58 @@ type RedisAdditionalOptions struct {
 }
 ```
 
-## Особенности
+## Security Features
 
-### Обработка ключей
-- Автоматическая нормализация ключей (удаление специальных символов)
-- Замена пробелов на нижнее подчеркивание
-- Поддержка иерархических ключей через слайс строк
-- Ограничение размера ключа до 512 МБ
+### Input Validation
+- **Nil checks** - All methods validate input parameters
+- **Configuration validation** - Comprehensive Redis connection validation
+- **Data size limits** - Maximum 512 MB for keys and values
+- **Domain validation** - Proper hostname and IP address validation
+- **Key normalization** - Automatic key sanitization and normalization
 
-### Обработка данных
-- Автоматическая сериализация/десериализация объектов в JSON
-- Проверка размера данных (максимум 512 МБ)
-- Обработка ошибки `redis.Nil` при отсутствии ключа
+### Resource Safety
+- **Goroutine management** - Proper cleanup of background goroutines
+- **Channel safety** - Safe channel operations with nil checks
+- **Context handling** - Proper context cancellation and timeout management
+- **Connection cleanup** - Graceful shutdown of Redis connections
 
-### Производительность
-- Настраиваемый пул соединений
-- Контексты с таймаутами для всех операций
-- Эффективное удаление множественных ключей
+### Error Handling
+- **Detailed error messages** - Comprehensive error information
+- **Graceful degradation** - Proper handling of missing keys and network issues
+- **Validation errors** - Clear feedback for invalid inputs
 
-### Массовые операции
-Метод `Del()` поддерживает удаление нескольких ключей за один вызов:
+## Features
+
+### Key Processing
+- Automatic key normalization (removing special characters)
+- Replacing spaces with underscores
+- Support for hierarchical keys via string slice
+- Key size limit of 512 MB
+- Input validation and sanitization
+
+### Data Processing
+- Automatic object serialization/deserialization to JSON
+- Data size validation (maximum 512 MB)
+- Handling `redis.Nil` error when key is missing
+- Comprehensive error handling
+
+### Performance
+- Configurable connection pool
+- Contexts with timeouts for all operations
+- Efficient multiple key deletion
+- Goroutine pool for key expiration notification processing
+- Optimized object search processing with proper cleanup
+
+### Key Expiration Notifications
+- Automatic Redis configuration for notifications
+- Unbuffered channel for synchronous event transmission
+- Goroutine pool for event processing
+- Guaranteed delivery of all notifications
+- Graceful shutdown when closing connection
+- Thread-safe operations with mutex protection
+
+### Bulk Operations
+The `Del()` method supports deleting multiple keys in one call:
 ```go
 err := redisClient.Del(
     []string{"users", "1"},
@@ -226,11 +289,24 @@ err := redisClient.Del(
 )
 ```
 
-## Требования
+### List Operations
+Enhanced list operations with validation:
+```go
+// Add elements to list
+err := redisClient.LPush([]string{"queue"}, "task1", "task2")
 
-- Go 1.24.2+
-- Redis сервер
+// Get elements from list
+task, err := redisClient.LPop([]string{"queue"})
 
-## Лицензия
+// Get list range
+items, err := redisClient.LRange([]string{"queue"}, 0, -1)
+```
+
+## Requirements
+
+- Go 1.24.0+
+- Redis server version 2.8.0+
+
+## License
 
 MIT License
