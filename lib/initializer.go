@@ -3,7 +3,6 @@ package redisgklib
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -75,26 +74,10 @@ func (ri *redisInitializer) setupKeyExpirationNotifications() error {
 	ctx, cancel := context.WithTimeout(ri.ctx, 5*time.Second)
 	defer cancel()
 
-	// Check current configuration
-	currentConfig, err := ri.client.ConfigGet(ctx, "notify-keyspace-events").Result()
+	// Set configuration for key expiration notifications (Redis handles duplicates automatically)
+	err := ri.client.ConfigSet(ctx, "notify-keyspace-events", "Ex").Err()
 	if err != nil {
-		return fmt.Errorf("error getting current configuration notify-keyspace-events: %w", err)
-	}
-
-	// Check if configuration contains 'E' (expiration events)
-	hasExpirationEvents := false
-	if configValue, exists := currentConfig["notify-keyspace-events"]; exists {
-		if strings.Contains(configValue, "E") {
-			hasExpirationEvents = true
-		}
-	}
-
-	// If configuration doesn't contain 'E', set it
-	if !hasExpirationEvents {
-		err := ri.client.ConfigSet(ctx, "notify-keyspace-events", "Ex").Err()
-		if err != nil {
-			return fmt.Errorf("error setting notify-keyspace-events: %w", err)
-		}
+		return fmt.Errorf("error setting notify-keyspace-events: %w", err)
 	}
 
 	return nil

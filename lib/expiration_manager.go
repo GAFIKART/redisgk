@@ -91,10 +91,10 @@ func (em *expirationManager) listenForExpirations(pubsub *redis.PubSub) {
 					ExpiredAt: time.Now().UTC(),
 				}
 
+
 				// Simply forward event to user (block until user reads)
 				select {
 				case em.expirationChan <- event:
-					// Event successfully sent to user
 				case <-em.ctx.Done():
 					return
 				}
@@ -135,6 +135,7 @@ func (em *expirationManager) stop() {
 // getExpirationChannel returns channel for receiving key expiration notifications
 func (em *expirationManager) getExpirationChannel() <-chan KeyExpirationEvent {
 	if em == nil {
+		fmt.Printf("DEBUG: getExpirationChannel called on nil manager\n")
 		return nil
 	}
 	return em.expirationChan

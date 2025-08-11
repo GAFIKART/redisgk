@@ -88,3 +88,8 @@ func (v *RedisGk) ListenChannelExpirationManager() <-chan KeyExpirationEvent {
 	}
 	return nil
 }
+
+// GetRedisClient returns the Redis client
+func (v *RedisGk) GetRedisClient() *redis.Client {
+	return v.redisClient
+}
