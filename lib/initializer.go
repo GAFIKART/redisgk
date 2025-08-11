@@ -75,7 +75,7 @@ func (ri *redisInitializer) setupKeyExpirationNotifications() error {
 	defer cancel()
 
 	// Set configuration for key expiration notifications (Redis handles duplicates automatically)
-	err := ri.client.ConfigSet(ctx, "notify-keyspace-events", "Ex").Err()
+	err := ri.client.ConfigSet(ctx, "notify-keyspace-events", "Exg").Err()
 	if err != nil {
 		return fmt.Errorf("error setting notify-keyspace-events: %w", err)
 	}
