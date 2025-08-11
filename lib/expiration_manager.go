@@ -55,7 +55,7 @@ func (em *expirationManager) start() error {
 	}
 
 	// Create subscription to key expiration notification channel
-	pubsub := em.client.Subscribe(em.ctx, "__keyevent@0__:expired")
+	pubsub := em.client.Subscribe(em.ctx, "__keyevent@0__:expire")
 
 	// Start goroutine for processing notifications
 	em.wg.Add(1)
@@ -77,7 +77,7 @@ func (em *expirationManager) listenForExpirations(pubsub *redis.PubSub) {
 		case <-em.ctx.Done():
 			return
 		case msg := <-pubsub.Channel():
-			if msg.Channel == "__keyevent@0__:expired" {
+			if msg.Channel == "__keyevent@0__:expire" {
 				// Get record value before it expires
 				value, err := em.getKeyValueBeforeExpiration(msg.Payload)
 				if err != nil {
@@ -88,7 +88,7 @@ func (em *expirationManager) listenForExpirations(pubsub *redis.PubSub) {
 				event := KeyExpirationEvent{
 					Key:       msg.Payload,
 					Value:     value,
-					ExpiredAt: time.Now(),
+					ExpiredAt: time.Now().UTC(),
 				}
 
 				// Simply forward event to user (block until user reads)

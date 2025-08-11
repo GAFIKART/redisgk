@@ -61,17 +61,6 @@ func NewRedisGk(conf RedisConfConn) (*RedisGk, error) {
 		return nil, err
 	}
 
-	// Logging Redis server configuration at the end of connection
-	fmt.Printf("📋 Redis Server Configuration:\n")
-
-	// Getting all Redis configurations
-	config, err := redisClient.ConfigGet(ctx, "*").Result()
-	if err == nil {
-		for name, value := range config {
-			fmt.Printf("   %s: %s\n", name, value)
-		}
-	}
-
 	return redisGk, nil
 }
 
