@@ -26,7 +26,8 @@ func main() {
 	defer redisGk.Close()
 
 	fmt.Println("RedisGk initialized successfully")
-	fmt.Println("Listening for key expiration events...")
+	fmt.Println("Listening for key events via keyevent channels...")
+	fmt.Println("Channels: __keyevent@0__:expire, __keyevent@0__:expired, __keyevent@0__:set, __keyevent@0__:del")
 
 	// Get channel for listening to events
 	eventChan := redisGk.ListenChannelKeyEventManager()
@@ -53,8 +54,9 @@ func main() {
 
 	// Listen for events
 	fmt.Println("\nListening for events...")
-	fmt.Println("Redis channels: __keyevent@0__:expire, __keyevent@0__:set, __keyevent@0__:del")
-	fmt.Println("Note: 'expire' events can be triggered by TTL setting, not just actual expiration")
+	fmt.Println("Expected sequence:")
+	fmt.Println("1. TTL setting event (EventTypeExpire)")
+	fmt.Println("2. Key expiration event (EventTypeExpired)")
 
 	for {
 		select {
@@ -68,8 +70,10 @@ func main() {
 
 			// Filter events by type
 			switch event.EventType {
+			case redisgklib.EventTypeExpire:
+				fmt.Printf("⏰ EXPIRE: TTL was set for key '%s'\n", event.Key)
 			case redisgklib.EventTypeExpired:
-				fmt.Printf("🔴 EXPIRED: Key '%s' actually expired\n", event.Key)
+				fmt.Printf("🔴 EXPIRED: Key '%s' has expired\n", event.Key)
 				if event.Key == "test_key" {
 					fmt.Println("Test key expired, exiting...")
 					return

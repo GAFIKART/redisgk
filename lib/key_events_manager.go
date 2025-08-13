@@ -3,6 +3,7 @@ package redisgklib
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,11 +55,12 @@ func (em *listenerKeyEventManager) start() error {
 		return nil
 	}
 
-	// Subscribe to all Redis event channels for proper event type detection
+	// Subscribe to specific Redis keyevent channels
 	channels := []string{
-		"__keyevent@0__:expire", // Expiration events
-		"__keyevent@0__:set",    // Creation/update events
-		"__keyevent@0__:del",    // Deletion events
+		"__keyevent@0__:expire",  // TTL setting events
+		"__keyevent@0__:expired", // Key expiration events
+		"__keyevent@0__:set",     // Creation/update events
+		"__keyevent@0__:del",     // Deletion events
 	}
 
 	// Create subscription to key event notification channels
@@ -102,36 +104,31 @@ func (em *listenerKeyEventManager) processEventMessage(msg *redis.Message) KeyEv
 	var eventType EventType
 	var key string
 
-	switch msg.Channel {
-	case "__keyevent@0__:expire":
-		// Check if this is actually an expiration or just TTL setting
-		if em.isKeyActuallyExpired(msg.Payload) {
+	channelName := msg.Channel
+	// Handle keyevent events
+	if strings.HasPrefix(msg.Channel, "__keyevent@0__:") {
+		key = msg.Payload
+		// Determine event type from keyevent channel
+		if strings.HasSuffix(msg.Channel, ":expire") {
+			eventType = EventTypeExpire
+		} else if strings.HasSuffix(msg.Channel, ":expired") {
 			eventType = EventTypeExpired
-		} else {
-			// This is likely a TTL setting event, treat as creation/update
+		} else if strings.HasSuffix(msg.Channel, ":set") {
 			eventType = EventTypeCreated
+		} else if strings.HasSuffix(msg.Channel, ":del") {
+			eventType = EventTypeDeleted
+		} else {
+			eventType = EventTypeUnknown
 		}
-		key = msg.Payload
-	case "__keyevent@0__:set":
-		eventType = EventTypeCreated // or Updated, depends on context
-		key = msg.Payload
-	case "__keyevent@0__:del":
-		eventType = EventTypeDeleted
-		key = msg.Payload
-	default:
+	} else {
+		// Unknown channel
 		eventType = EventTypeUnknown
 		key = msg.Payload
 	}
 
 	// Get key value if possible
 	value := ""
-	if eventType == EventTypeExpired {
-		// For expiring keys, try to get value before deletion
-		value, _ = em.getKeyValue(key)
-	} else if eventType == EventTypeCreated || eventType == EventTypeUpdated {
-		// For created/updated keys, get current value
-		value, _ = em.getKeyValue(key)
-	}
+	value, _ = em.getKeyValue(key)
 
 	now := time.Now().UTC()
 
@@ -140,46 +137,8 @@ func (em *listenerKeyEventManager) processEventMessage(msg *redis.Message) KeyEv
 		Value:     value,
 		EventType: eventType,
 		Timestamp: now,
+		Channel:   channelName,
 	}
-}
-
-// isKeyActuallyExpired checks if a key is actually expired or just has TTL set
-func (em *listenerKeyEventManager) isKeyActuallyExpired(key string) bool {
-	if em == nil || em.client == nil {
-		return false
-	}
-
-	ctx, cancel := context.WithTimeout(em.ctx, 100*time.Millisecond)
-	defer cancel()
-
-	// Check if key exists and get its TTL
-	ttl, err := em.client.TTL(ctx, key).Result()
-	if err != nil {
-		// If we can't get TTL, assume it's not expired
-		return false
-	}
-
-	// If TTL is -1, key has no expiration
-	if ttl == -1 {
-		return false
-	}
-
-	// If TTL is -2, key doesn't exist (already expired)
-	if ttl == -2 {
-		return true
-	}
-
-	// If TTL is positive, key still exists and hasn't expired yet
-	if ttl > 0 {
-		return false
-	}
-
-	// If TTL is 0, key should be expired
-	if ttl == 0 {
-		return true
-	}
-
-	return false
 }
 
 // stop stops the notification listener
@@ -211,10 +170,9 @@ func (em *listenerKeyEventManager) stop() {
 	em.isRunning = false
 }
 
-// getKeyEventChannel returns channel for receiving key  notifications
+// getKeyEventChannel returns channel for receiving key event notifications
 func (em *listenerKeyEventManager) getKeyEventChannel() <-chan KeyEvent {
 	if em == nil {
-		fmt.Printf("DEBUG: getKeyEventChannel called on nil manager\n")
 		return nil
 	}
 	return em.keyEventChan

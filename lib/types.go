@@ -29,6 +29,7 @@ type EventType string
 
 const (
 	EventTypeExpired EventType = "expired" // Key expired
+	EventTypeExpire  EventType = "expire"  // TTL was set (key will expire)
 	EventTypeCreated EventType = "created" // Key created
 	EventTypeUpdated EventType = "updated" // Key updated
 	EventTypeDeleted EventType = "deleted" // Key deleted
@@ -41,4 +42,5 @@ type KeyEvent struct {
 	Value     string    `json:"value"`      // Record body (value)
 	EventType EventType `json:"event_type"` // Event type
 	Timestamp time.Time `json:"timestamp"`  // Event timestamp
+	Channel   string    `json:"channel"`    // Channel name
 }

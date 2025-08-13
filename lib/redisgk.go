@@ -12,7 +12,7 @@ import (
 type RedisGk struct {
 	redisClient *redis.Client
 	baseCtx     time.Duration
-	// Key notification manager
+	// Key event notification manager
 	listenerKeyEventManager *listenerKeyEventManager
 }
 
@@ -44,7 +44,7 @@ func NewRedisGk(conf RedisConfConn) (*RedisGk, error) {
 		return nil, err
 	}
 
-	// Create key  notification manager
+	// Create key event notification manager
 	listenerKeyEventManager := newListenerKeyEventManager(redisClient, context.Background())
 	if listenerKeyEventManager == nil {
 		return nil, fmt.Errorf("failed to create listener key event manager")
@@ -56,7 +56,7 @@ func NewRedisGk(conf RedisConfConn) (*RedisGk, error) {
 		listenerKeyEventManager: listenerKeyEventManager,
 	}
 
-	// Automatically start key  notification listener
+	// Automatically start key event notification listener
 	if err := redisGk.listenerKeyEventManager.start(); err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (v *RedisGk) Close() error {
 	return nil
 }
 
-// ListenChannelKeyEventManager returns channel for receiving key  notifications
+// ListenChannelKeyEventManager returns channel for receiving key event notifications
 // Simple method for external library users
 func (v *RedisGk) ListenChannelKeyEventManager() <-chan KeyEvent {
 	if v == nil {
