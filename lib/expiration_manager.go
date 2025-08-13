@@ -104,7 +104,13 @@ func (em *listenerKeyEventManager) processEventMessage(msg *redis.Message) KeyEv
 
 	switch msg.Channel {
 	case "__keyevent@0__:expire":
-		eventType = EventTypeExpired
+		// Check if this is actually an expiration or just TTL setting
+		if em.isKeyActuallyExpired(msg.Payload) {
+			eventType = EventTypeExpired
+		} else {
+			// This is likely a TTL setting event, treat as creation/update
+			eventType = EventTypeCreated
+		}
 		key = msg.Payload
 	case "__keyevent@0__:set":
 		eventType = EventTypeCreated // or Updated, depends on context
@@ -135,6 +141,45 @@ func (em *listenerKeyEventManager) processEventMessage(msg *redis.Message) KeyEv
 		EventType: eventType,
 		Timestamp: now,
 	}
+}
+
+// isKeyActuallyExpired checks if a key is actually expired or just has TTL set
+func (em *listenerKeyEventManager) isKeyActuallyExpired(key string) bool {
+	if em == nil || em.client == nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(em.ctx, 100*time.Millisecond)
+	defer cancel()
+
+	// Check if key exists and get its TTL
+	ttl, err := em.client.TTL(ctx, key).Result()
+	if err != nil {
+		// If we can't get TTL, assume it's not expired
+		return false
+	}
+
+	// If TTL is -1, key has no expiration
+	if ttl == -1 {
+		return false
+	}
+
+	// If TTL is -2, key doesn't exist (already expired)
+	if ttl == -2 {
+		return true
+	}
+
+	// If TTL is positive, key still exists and hasn't expired yet
+	if ttl > 0 {
+		return false
+	}
+
+	// If TTL is 0, key should be expired
+	if ttl == 0 {
+		return true
+	}
+
+	return false
 }
 
 // stop stops the notification listener

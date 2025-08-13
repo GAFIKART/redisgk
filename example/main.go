@@ -53,26 +53,29 @@ func main() {
 
 	// Listen for events
 	fmt.Println("\nListening for events...")
+	fmt.Println("Redis channels: __keyevent@0__:expire, __keyevent@0__:set, __keyevent@0__:del")
+	fmt.Println("Note: 'expire' events can be triggered by TTL setting, not just actual expiration")
+
 	for {
 		select {
 		case event := <-eventChan:
-			fmt.Printf("Event received:\n")
-			fmt.Printf("  Key: %s\n", event.Key)
-			fmt.Printf("  Value: %s\n", event.Value)
-			fmt.Printf("  Event Type: %s\n", event.EventType)
-			fmt.Printf("  Timestamp: %s\n", event.Timestamp)
-			fmt.Println("---")
+			fmt.Printf("\n=== Event received ===\n")
+			fmt.Printf("Key: %s\n", event.Key)
+			fmt.Printf("Value: %s\n", event.Value)
+			fmt.Printf("Event Type: %s\n", event.EventType)
+			fmt.Printf("Timestamp: %s\n", event.Timestamp)
+			fmt.Println("===================")
 
 			// Filter events by type
 			switch event.EventType {
 			case redisgklib.EventTypeExpired:
-				fmt.Printf("🔴 EXPIRED: Key '%s' expired\n", event.Key)
+				fmt.Printf("🔴 EXPIRED: Key '%s' actually expired\n", event.Key)
 				if event.Key == "test_key" {
 					fmt.Println("Test key expired, exiting...")
 					return
 				}
 			case redisgklib.EventTypeCreated:
-				fmt.Printf("🟢 CREATED: Key '%s' was created\n", event.Key)
+				fmt.Printf("🟢 CREATED: Key '%s' was created/updated\n", event.Key)
 			case redisgklib.EventTypeDeleted:
 				fmt.Printf("🗑️ DELETED: Key '%s' was deleted\n", event.Key)
 			default:
