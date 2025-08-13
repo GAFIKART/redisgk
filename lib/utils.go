@@ -25,8 +25,8 @@ func pathRedisController(key string) string {
 
 	keys := strings.ToLower(key)
 
-	// Fix regular expression - remove extra characters
-	re01 := regexp.MustCompile(`[\*\?\[\]\.]`)
+	// Fix regular expression - remove extra characters (but keep * for wildcards)
+	re01 := regexp.MustCompile(`[\?\[\]\.]`)
 	keys = re01.ReplaceAllString(keys, "")
 
 	// Replace multiple colons with single one
