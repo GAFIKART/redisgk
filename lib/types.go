@@ -24,9 +24,21 @@ type RedisAdditionalOptions struct {
 	BaseCtx time.Duration
 }
 
-// KeyExpirationEvent - structure for key expiration event
-type KeyExpirationEvent struct {
+// EventType - Redis event type
+type EventType string
+
+const (
+	EventTypeExpired EventType = "expired" // Key expired
+	EventTypeCreated EventType = "created" // Key created
+	EventTypeUpdated EventType = "updated" // Key updated
+	EventTypeDeleted EventType = "deleted" // Key deleted
+	EventTypeUnknown EventType = "unknown" // Unknown event type
+)
+
+// KeyEvent - structure for Redis key event
+type KeyEvent struct {
 	Key       string    `json:"key"`        // Key name
 	Value     string    `json:"value"`      // Record body (value)
-	ExpiredAt time.Time `json:"expired_at"` // Expiration time
+	EventType EventType `json:"event_type"` // Event type
+	Timestamp time.Time `json:"timestamp"`  // Event timestamp
 }

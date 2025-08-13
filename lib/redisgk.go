@@ -12,8 +12,8 @@ import (
 type RedisGk struct {
 	redisClient *redis.Client
 	baseCtx     time.Duration
-	// Key expiration notification manager
-	expirationManager *expirationManager
+	// Key notification manager
+	listenerKeyEventManager *listenerKeyEventManager
 }
 
 // NewRedisGk creates a new RedisGk instance
@@ -44,20 +44,20 @@ func NewRedisGk(conf RedisConfConn) (*RedisGk, error) {
 		return nil, err
 	}
 
-	// Create key expiration notification manager
-	expirationManager := newExpirationManager(redisClient, context.Background())
-	if expirationManager == nil {
-		return nil, fmt.Errorf("failed to create expiration manager")
+	// Create key  notification manager
+	listenerKeyEventManager := newListenerKeyEventManager(redisClient, context.Background())
+	if listenerKeyEventManager == nil {
+		return nil, fmt.Errorf("failed to create listener key event manager")
 	}
 
 	redisGk := &RedisGk{
-		redisClient:       redisClient,
-		baseCtx:           conf.AdditionalOptions.BaseCtx,
-		expirationManager: expirationManager,
+		redisClient:             redisClient,
+		baseCtx:                 conf.AdditionalOptions.BaseCtx,
+		listenerKeyEventManager: listenerKeyEventManager,
 	}
 
-	// Automatically start key expiration notification listener
-	if err := redisGk.expirationManager.start(); err != nil {
+	// Automatically start key  notification listener
+	if err := redisGk.listenerKeyEventManager.start(); err != nil {
 		return nil, err
 	}
 
@@ -67,8 +67,8 @@ func NewRedisGk(conf RedisConfConn) (*RedisGk, error) {
 // Close closes Redis connection
 func (v *RedisGk) Close() error {
 	// Stop notification manager
-	if v.expirationManager != nil {
-		v.expirationManager.stop()
+	if v.listenerKeyEventManager != nil {
+		v.listenerKeyEventManager.stop()
 	}
 
 	if v.redisClient != nil {
@@ -77,14 +77,14 @@ func (v *RedisGk) Close() error {
 	return nil
 }
 
-// ListenChannelExpirationManager returns channel for receiving key expiration notifications
+// ListenChannelKeyEventManager returns channel for receiving key  notifications
 // Simple method for external library users
-func (v *RedisGk) ListenChannelExpirationManager() <-chan KeyExpirationEvent {
+func (v *RedisGk) ListenChannelKeyEventManager() <-chan KeyEvent {
 	if v == nil {
 		return nil
 	}
-	if v.expirationManager != nil {
-		return v.expirationManager.getExpirationChannel()
+	if v.listenerKeyEventManager != nil {
+		return v.listenerKeyEventManager.getKeyEventChannel()
 	}
 	return nil
 }

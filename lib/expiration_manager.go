@@ -9,19 +9,19 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// expirationManager - manager for working with key expiration notifications
-type expirationManager struct {
-	client         *redis.Client
-	ctx            context.Context
-	cancel         context.CancelFunc
-	expirationChan chan KeyExpirationEvent
-	mu             sync.RWMutex
-	isRunning      bool
-	wg             sync.WaitGroup // Add WaitGroup for proper goroutine completion
+// listenerKeyEventManager - manager for working with key expiration notifications
+type listenerKeyEventManager struct {
+	client       *redis.Client
+	ctx          context.Context
+	cancel       context.CancelFunc
+	keyEventChan chan KeyEvent
+	mu           sync.RWMutex
+	isRunning    bool
+	wg           sync.WaitGroup // Add WaitGroup for proper goroutine completion
 }
 
-// newExpirationManager creates a new key expiration notification manager
-func newExpirationManager(client *redis.Client, ctx context.Context) *expirationManager {
+// newListenerKeyEventManager creates a new key expiration notification manager
+func newListenerKeyEventManager(client *redis.Client, ctx context.Context) *listenerKeyEventManager {
 	if client == nil {
 		return nil
 	}
@@ -31,19 +31,19 @@ func newExpirationManager(client *redis.Client, ctx context.Context) *expiration
 
 	managerCtx, cancel := context.WithCancel(ctx)
 
-	return &expirationManager{
-		client:         client,
-		ctx:            managerCtx,
-		cancel:         cancel,
-		expirationChan: make(chan KeyExpirationEvent), // Unbuffered channel for simple forwarding
-		isRunning:      false,
+	return &listenerKeyEventManager{
+		client:       client,
+		ctx:          managerCtx,
+		cancel:       cancel,
+		keyEventChan: make(chan KeyEvent), // Unbuffered channel for simple forwarding
+		isRunning:    false,
 	}
 }
 
-// start starts the key expiration notification listener
-func (em *expirationManager) start() error {
+// start starts the key  notification listener
+func (em *listenerKeyEventManager) start() error {
 	if em == nil {
-		return fmt.Errorf("expiration manager is nil")
+		return fmt.Errorf("listener key event manager is nil")
 	}
 
 	em.mu.Lock()
@@ -54,19 +54,26 @@ func (em *expirationManager) start() error {
 		return nil
 	}
 
-	// Create subscription to key expiration notification channel
-	pubsub := em.client.Subscribe(em.ctx, "__keyevent@0__:expire")
+	// Subscribe to all Redis event channels for proper event type detection
+	channels := []string{
+		"__keyevent@0__:expire", // Expiration events
+		"__keyevent@0__:set",    // Creation/update events
+		"__keyevent@0__:del",    // Deletion events
+	}
+
+	// Create subscription to key event notification channels
+	pubsub := em.client.Subscribe(em.ctx, channels...)
 
 	// Start goroutine for processing notifications
 	em.wg.Add(1)
-	go em.listenForExpirations(pubsub)
+	go em.listenForEvents(pubsub)
 
 	em.isRunning = true
 	return nil
 }
 
-// listenForExpirations listens for key expiration notifications
-func (em *expirationManager) listenForExpirations(pubsub *redis.PubSub) {
+// listenForEvents listens for key event notifications
+func (em *listenerKeyEventManager) listenForEvents(pubsub *redis.PubSub) {
 	defer func() {
 		pubsub.Close()
 		em.wg.Done()
@@ -77,24 +84,11 @@ func (em *expirationManager) listenForExpirations(pubsub *redis.PubSub) {
 		case <-em.ctx.Done():
 			return
 		case msg := <-pubsub.Channel():
-			if msg.Channel == "__keyevent@0__:expire" {
-				// Get record value before it expires
-				value, err := em.getKeyValueBeforeExpiration(msg.Payload)
-				if err != nil {
-					// If failed to get value, use empty string
-					value = ""
-				}
-
-				event := KeyExpirationEvent{
-					Key:       msg.Payload,
-					Value:     value,
-					ExpiredAt: time.Now().UTC(),
-				}
-
-
+			event := em.processEventMessage(msg)
+			if event.EventType != EventTypeUnknown {
 				// Simply forward event to user (block until user reads)
 				select {
-				case em.expirationChan <- event:
+				case em.keyEventChan <- event:
 				case <-em.ctx.Done():
 					return
 				}
@@ -103,8 +97,48 @@ func (em *expirationManager) listenForExpirations(pubsub *redis.PubSub) {
 	}
 }
 
+// processEventMessage processes event message and determines event type by channel
+func (em *listenerKeyEventManager) processEventMessage(msg *redis.Message) KeyEvent {
+	var eventType EventType
+	var key string
+
+	switch msg.Channel {
+	case "__keyevent@0__:expire":
+		eventType = EventTypeExpired
+		key = msg.Payload
+	case "__keyevent@0__:set":
+		eventType = EventTypeCreated // or Updated, depends on context
+		key = msg.Payload
+	case "__keyevent@0__:del":
+		eventType = EventTypeDeleted
+		key = msg.Payload
+	default:
+		eventType = EventTypeUnknown
+		key = msg.Payload
+	}
+
+	// Get key value if possible
+	value := ""
+	if eventType == EventTypeExpired {
+		// For expiring keys, try to get value before deletion
+		value, _ = em.getKeyValue(key)
+	} else if eventType == EventTypeCreated || eventType == EventTypeUpdated {
+		// For created/updated keys, get current value
+		value, _ = em.getKeyValue(key)
+	}
+
+	now := time.Now().UTC()
+
+	return KeyEvent{
+		Key:       key,
+		Value:     value,
+		EventType: eventType,
+		Timestamp: now,
+	}
+}
+
 // stop stops the notification listener
-func (em *expirationManager) stop() {
+func (em *listenerKeyEventManager) stop() {
 	if em == nil {
 		return
 	}
@@ -125,26 +159,26 @@ func (em *expirationManager) stop() {
 	em.wg.Wait()
 
 	// Close channel only after all goroutines complete
-	if em.expirationChan != nil {
-		close(em.expirationChan)
+	if em.keyEventChan != nil {
+		close(em.keyEventChan)
 	}
 
 	em.isRunning = false
 }
 
-// getExpirationChannel returns channel for receiving key expiration notifications
-func (em *expirationManager) getExpirationChannel() <-chan KeyExpirationEvent {
+// getKeyEventChannel returns channel for receiving key  notifications
+func (em *listenerKeyEventManager) getKeyEventChannel() <-chan KeyEvent {
 	if em == nil {
-		fmt.Printf("DEBUG: getExpirationChannel called on nil manager\n")
+		fmt.Printf("DEBUG: getKeyEventChannel called on nil manager\n")
 		return nil
 	}
-	return em.expirationChan
+	return em.keyEventChan
 }
 
-// getKeyValueBeforeExpiration tries to get the value of the key before expiration
-func (em *expirationManager) getKeyValueBeforeExpiration(key string) (string, error) {
+// getKeyValue tries to get the value of the key
+func (em *listenerKeyEventManager) getKeyValue(key string) (string, error) {
 	// Fast attempt to get the value with a short timeout
-	ctx, cancel := context.WithTimeout(em.ctx, 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(em.ctx, 5*time.Second)
 	defer cancel()
 
 	result, err := em.client.Get(ctx, key).Result()
