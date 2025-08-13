@@ -3,6 +3,7 @@ package redisgklib
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -175,6 +176,40 @@ func (v *RedisGk) Del(keyPath ...[]string) error {
 	}
 
 	return nil
+}
+
+// FindKeyByPattern finds key by pattern and returns its value
+func (v *RedisGk) FindKeyByPattern(patterns []string) (string, string, error) {
+	if v == nil || v.redisClient == nil {
+		return "", "", fmt.Errorf("listener key event manager or client is nil")
+	}
+
+	pattern := strings.Join(patterns, ":")
+	pattern = pathRedisController(pattern)
+
+	ctx, cancel := v.createContextWithTimeout()
+	defer cancel()
+
+	// Use SCAN to find keys by pattern
+	iter := v.redisClient.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+		// Get key value
+		value, err := v.getKeyValue(key)
+		if err != nil {
+			if err == redis.Nil {
+				continue // Key already deleted
+			}
+			return key, "", fmt.Errorf("failed to get value for key %s: %w", key, err)
+		}
+		return key, value, nil // Return first found key and its value
+	}
+
+	if err := iter.Err(); err != nil {
+		return "", "", fmt.Errorf("scan error: %w", err)
+	}
+
+	return "", "", fmt.Errorf("no keys found for pattern %s", pattern)
 }
 
 // FindObj searches objects by key pattern
